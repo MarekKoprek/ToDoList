@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.room.Database
@@ -82,6 +83,65 @@ class ToDoViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun editReminder(id: Int,
+                    day: Int,
+                    month: Int,
+                    year: Int,
+                    hour: Int,
+                    minute: Int,
+                    title: String,
+                    description: String,
+                    category: String,
+                    notification: Boolean,
+                    finished: Boolean,
+                    files: Boolean,
+                    attachments: List<Uri>) {
+        viewModelScope.launch {
+            val reminder = reminderDao.getReminderById(id)
+            reminder?.attachments?.forEach {
+                deleteFileFromUri(it)
+            }
+            reminderDao.update(Reminder(id = id,
+                day = day,
+                month = month,
+                year = year,
+                hour = hour,
+                minute = minute,
+                title = title,
+                description = description,
+                category = category,
+                notification = notification,
+                finished = finished,
+                files = files,
+                attachments = emptyList(),
+                notificationSent = false,
+            ))
+            val context: Context = getApplication()
+            val newUris: MutableList<Uri> = emptyList<Uri>().toMutableList()
+            for (attachment in attachments) {
+                val newFileName = "${id}_${getFileNameFromUri(attachment)}"
+                newUris += context.copyUriToAppStorage(attachment, newFileName)
+            }
+            if (attachments.isNotEmpty()) {
+                reminderDao.updateAttachments(id, newUris)
+            }
+            getReminders()
+        }
+    }
+
+    fun removeReminder(id: Int) {
+        viewModelScope.launch {
+            val reminder = reminderDao.getReminderById(id)
+            reminder?.attachments?.forEach {
+                deleteFileFromUri(it)
+            }
+            if (reminder != null) {
+                reminderDao.delete(reminder)
+            }
+        }
+        getReminders()
+    }
+
     fun getReminders(){
         viewModelScope.launch {
             val list: List<Reminder>
@@ -122,6 +182,14 @@ class ToDoViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
         return Uri.fromFile(targetFile)
+    }
+
+    private fun deleteFileFromUri(uri: Uri) {
+        val file = File(uri.path!!)
+        if (file.exists()) {
+            val deleted = file.delete()
+            Log.d("FileDelete", "Plik usunięty: $deleted")
+        }
     }
 
     fun getFileNameFromUri(uri: Uri): String? {

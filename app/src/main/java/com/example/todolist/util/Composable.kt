@@ -2,17 +2,12 @@ package com.example.todolist.util
 
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
-import android.content.Context
-import android.content.ContextWrapper
 import android.net.Uri
-import android.provider.OpenableColumns
 import android.util.Log
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -64,6 +59,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.util.Calendar
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -76,6 +75,7 @@ fun MainScreenView(
     var expanded by remember { mutableStateOf(false) }
     var currentView by remember { mutableStateOf("main") }
     val categories = listOf("Wszystkie", "Praca", "Spotkanie")
+    var editId by remember { mutableStateOf(0) }
 
     var lastView by remember { mutableStateOf("") }
 
@@ -85,12 +85,30 @@ fun MainScreenView(
         currentView = "main"
     }
 
+    val onEditClick: (Int, Int, Int, Int, Int, Int, String, String, String, Boolean, Boolean, Boolean, List<Uri>) -> Unit = {
+            id, day, month, year, hour, minute, title, description, category, notification, finished, files, attachments ->
+        toDoViewModel.editReminder(id, day, month, year, hour, minute, title, description, category, notification, finished, files, attachments)
+        currentView = "main"
+    }
+
+    val onDeleteClick: suspend (Int) -> Unit = {
+        toDoViewModel.removeReminder(it)
+        delay(500)
+        currentView = "main"
+    }
+
     val onViewChange: (String) -> Unit = {
         lastView = currentView
         currentView = it
     }
 
-    val sampleReminders by toDoViewModel.reminders.collectAsState()
+    val onReminderClick: (Int) -> Unit = {
+        lastView = currentView
+        currentView = "edit"
+        editId = it
+    }
+
+    val reminders by toDoViewModel.reminders.collectAsState()
     val category by toDoViewModel.category.collectAsState()
     val notificationTime by toDoViewModel.notificationTime.collectAsState()
     val hideCompleted by toDoViewModel.hideFinished.collectAsState()
@@ -98,8 +116,10 @@ fun MainScreenView(
 
     val backDispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
     BackHandler {
-        if (lastView.length > 0 && currentView != "main") {
+        if (lastView.length > 0 && currentView != "main" && currentView != lastView) {
             currentView = lastView
+        } else {
+            currentView = "main"
         }
     }
 
@@ -139,6 +159,11 @@ fun MainScreenView(
                             text = "Ustawienia",
                             style = MaterialTheme.typography.titleLarge
                         )
+                    } else if (currentView == "edit") {
+                        Text(
+                            text = "Edytuj",
+                            style = MaterialTheme.typography.titleLarge
+                        )
                     }
                 }
 
@@ -158,7 +183,7 @@ fun MainScreenView(
             }
 
             if (currentView == "main"){
-                ToDoList(modifier = Modifier.weight(0.85f), sampleReminders, onViewChange)
+                ToDoList(modifier = Modifier.weight(0.85f), reminders, onViewChange, onReminderClick)
             } else if (currentView == "add"){
                 AddReminder(modifier = Modifier.weight(0.85f), toDoViewModel, onAddClick, categories.subList(1, categories.size))
             } else if (currentView == "settings") {
@@ -172,6 +197,9 @@ fun MainScreenView(
                     hideCompleted = hideCompleted,
                     onHideCompletedChange = { toDoViewModel.setHideFinished(it) }
                     )
+            } else if (currentView == "edit") {
+                val reminder = reminders.first { it.id == editId }
+                EditReminder(modifier = Modifier.weight(0.85f), toDoViewModel, onEditClick, categories.subList(1, categories.size), reminder, onDeleteClick)
             }
         }
     }
@@ -181,7 +209,8 @@ fun MainScreenView(
 fun ToDoList(
     modifier: Modifier = Modifier,
     reminders: List<Reminder>,
-    onViewChange: (String) -> Unit
+    onViewChange: (String) -> Unit,
+    onCardClick: (Int) -> Unit
 ) {
     Row (
         modifier = modifier.fillMaxWidth()
@@ -199,7 +228,7 @@ fun ToDoList(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(reminders) {
-                    ReminderCard(it)
+                    ReminderCard(it, onCardClick = onCardClick)
                 }
             }
 
@@ -215,9 +244,13 @@ fun ToDoList(
 }
 
 @Composable
-fun ReminderCard(reminder: Reminder) {
+fun ReminderCard(
+    reminder: Reminder,
+    onCardClick: (Int) -> Unit
+) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth()
+            .clickable { onCardClick(reminder.id) },
         elevation = CardDefaults.cardElevation(4.dp)
     ) {
         Row(
@@ -432,14 +465,21 @@ fun AddReminder(
             items(attachments.size) { index ->
                 val uri = attachments[index]
                 val fileName = remember(uri) { toDoViewModel.getFileNameFromUri(uri) ?: "Nieznany plik" }
-                Log.d("tag", "tutaj")
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(text = "${index + 1}. $fileName")
+                    val displayFileName = fileName.substring(0, 29) + (if (fileName.length > 29) "..." else "")
+                    Text(
+                        text = "${index + 1}. $displayFileName",
+                    )
                     IconButton(
-                        onClick = { attachments.removeAt(index) },
+                        onClick = {
+                            attachments = attachments.toMutableList().apply {
+                                removeAt(index)
+                            }
+                        },
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Close,
@@ -498,6 +538,292 @@ fun AddReminder(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Dodaj wydarzenie")
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun EditReminder(
+    modifier: Modifier = Modifier,
+    toDoViewModel: ToDoViewModel,
+    onAddClick: (Int, Int, Int, Int, Int, Int, String, String, String, Boolean, Boolean, Boolean, List<Uri>) -> Unit,
+    categories: List<String>,
+    reminder: Reminder,
+    onDeleteClick: suspend (Int) -> Unit
+) {
+    val month10 = if (reminder.month < 10) "0" else ""
+    val day10 = if (reminder.day < 10) "0" else ""
+    val hour10 = if (reminder.hour < 10) "0" else ""
+    val minute10 = if (reminder.minute < 10) "0" else ""
+    var title by remember { mutableStateOf(reminder.title) }
+    var description by remember { mutableStateOf(reminder.description) }
+    var date by remember { mutableStateOf(reminder.year.toString() + "-" + month10 + reminder.month.toString() + "-" + day10 + reminder.day.toString()) }
+    var time by remember { mutableStateOf(hour10 + reminder.hour.toString() + ":" + minute10 + reminder.minute.toString()) }
+    var notificationsEnabled by remember { mutableStateOf(reminder.notification) }
+    var attachments by remember { mutableStateOf<MutableList<Uri>>(reminder.attachments.toMutableList()) }
+    var category by remember { mutableStateOf(reminder.category) }
+    var finished by remember { mutableStateOf(reminder.finished) }
+    var expanded by remember { mutableStateOf(false) }
+
+    var titleError by remember { mutableStateOf(false) }
+    var dateError by remember { mutableStateOf(false) }
+    var timeError by remember { mutableStateOf(false) }
+    var categoryError by remember { mutableStateOf(false) }
+
+    val multipleAttachmentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetMultipleContents()
+    ) { uris: List<Uri> ->
+        attachments = (attachments + uris).toMutableList()
+    }
+
+    LazyColumn(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(8.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item {
+            OutlinedTextField(
+                value = title,
+                onValueChange = {
+                    title = it
+                    titleError = false
+                },
+                label = { Text("Tytuł") },
+                isError = titleError,
+                modifier = Modifier.fillMaxWidth(),
+                supportingText = {
+                    if (titleError) Text("Pole wymagane", color = MaterialTheme.colorScheme.error)
+                }
+
+            )
+        }
+
+        item {
+            OutlinedTextField(
+                value = description,
+                onValueChange = { description = it },
+                label = { Text("Opis") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(120.dp),
+                maxLines = 5
+            )
+        }
+
+        item {
+            Row (
+                modifier = Modifier
+                    .fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                DatePickerField(
+                    modifier = Modifier.weight(0.4f),
+                    selectedDate = date,
+                    onDateSelected = {
+                        date = it
+                        dateError = false
+                    },
+                    isError = dateError
+                )
+                TimePickerField(
+                    modifier = Modifier.weight(0.4f),
+                    selectedTime = time,
+                    onTimeSelected = {
+                        time = it
+                        timeError = false
+                    },
+                    isError = timeError
+                )
+            }
+        }
+
+        item {
+            Row (
+                modifier = Modifier
+                    .fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center
+            ) {
+                ExposedDropdownMenuBox(
+                    modifier = Modifier.fillMaxWidth(),
+                    expanded = expanded,
+                    onExpandedChange = { expanded = !expanded }
+                ) {
+                    TextField(
+                        value = category,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Kategoria") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+                        modifier = Modifier.menuAnchor()
+                            .fillMaxWidth()
+                    )
+                    ExposedDropdownMenu(
+                        expanded = expanded,
+                        onDismissRequest = { expanded = false }
+                    ) {
+                        categories.forEach { categoryItem ->
+                            DropdownMenuItem(
+                                text = { Text(categoryItem) },
+                                onClick = {
+                                    category = categoryItem
+                                    categoryError = false
+                                    expanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+            if (categoryError) {
+                Text(
+                    text = "Pole wymagane",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(start = 4.dp, top = 4.dp)
+                )
+            }
+        }
+
+        item {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text = "Włącz powiadomienia")
+                Switch(
+                    checked = notificationsEnabled,
+                    onCheckedChange = { notificationsEnabled = it }
+                )
+            }
+        }
+
+        item {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text = "Oznacz jako zakończone")
+                Switch(
+                    checked = finished,
+                    onCheckedChange = { finished = it }
+                )
+            }
+        }
+
+        item {
+            Button(
+                onClick = {
+                    multipleAttachmentLauncher.launch("*/*")
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Dodaj załączniki")
+            }
+        }
+
+        if (attachments.isNotEmpty()) {
+            item {
+                Text("Załączniki:", style = MaterialTheme.typography.titleMedium)
+            }
+
+            items(attachments.size) { index ->
+                val uri = attachments[index]
+                val fileName = remember(uri) { toDoViewModel.getFileNameFromUri(uri) ?: "Nieznany plik" }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val displayFileName = if (fileName.length > 29) fileName.substring(0, 29) + "..." else fileName
+                    Text(
+                        text = "${index + 1}. $displayFileName",
+                    )
+                    IconButton(
+                        onClick = {
+                            attachments = attachments.toMutableList().apply {
+                                removeAt(index)
+                            }
+                        },
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "Zamknij"
+                        )
+                    }
+                }
+            }
+        }
+
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Button(
+                    modifier = Modifier.weight(0.45f),
+                    onClick = {
+                        var hasError = false
+
+                        if (title.isBlank()) {
+                            titleError = true
+                            hasError = true
+                        }
+
+                        if (date.isBlank()) {
+                            dateError = true
+                            hasError = true
+                        }
+
+                        if (time.isBlank()) {
+                            timeError = true
+                            hasError = true
+                        }
+
+                        if (category.isBlank()) {
+                            categoryError = true
+                            hasError = true
+                        }
+
+                        if (!hasError) {
+                            val dateSplit = date.split("-")
+                            val timeSplit = time.split(":")
+                            onAddClick(
+                                reminder.id,
+                                dateSplit[2].toInt(),
+                                dateSplit[1].toInt(),
+                                dateSplit[0].toInt(),
+                                timeSplit[0].toInt(),
+                                timeSplit[1].toInt(),
+                                title,
+                                description,
+                                category,
+                                notificationsEnabled,
+                                finished,
+                                false,
+                                attachments
+                            )
+                        }
+                    },
+                ) {
+                    Text("Zapisz wydarzenie")
+                }
+
+                val coroutineScope = rememberCoroutineScope()
+                Button(
+                    modifier = Modifier.weight(0.45f),
+                    onClick = {
+                        coroutineScope.launch {
+                            onDeleteClick(reminder.id)
+                        }
+                    }
+                ) {
+                    Text("Usuń wydarzenie")
+                }
             }
         }
     }

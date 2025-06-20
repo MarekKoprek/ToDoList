@@ -8,6 +8,12 @@ interface ReminderDao {
     @Insert
     suspend fun insert(reminder: Reminder): Long
 
+    @Update
+    suspend fun update(reminder: Reminder)
+
+    @Query("SELECT * FROM reminder WHERE id = :id")
+    suspend fun getReminderById(id: Int): Reminder?
+
     @Query("SELECT * FROM reminder WHERE title LIKE '%' || :search || '%'")
     suspend fun getAllReminders(search: String): List<Reminder>
 
@@ -17,6 +23,6 @@ interface ReminderDao {
     @Delete
     suspend fun delete(reminder: Reminder)
 
-    @Query("UPDATE reminder SET attachments = :newAttachments WHERE id = :entityId")
+    @Query("UPDATE reminder SET attachments = :newAttachments, files = true WHERE id = :entityId")
     suspend fun updateAttachments(entityId: Int, newAttachments: List<Uri>)
 }
