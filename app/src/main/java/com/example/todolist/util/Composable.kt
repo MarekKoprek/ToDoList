@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.net.Uri
 import android.provider.OpenableColumns
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
@@ -29,9 +30,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Folder
@@ -59,6 +62,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import java.util.Calendar
 
@@ -89,6 +93,8 @@ fun MainScreenView(
     val sampleReminders by toDoViewModel.reminders.collectAsState()
     val category by toDoViewModel.category.collectAsState()
     val notificationTime by toDoViewModel.notificationTime.collectAsState()
+    val hideCompleted by toDoViewModel.hideFinished.collectAsState()
+    val search by toDoViewModel.search.collectAsState()
 
     val backDispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
     BackHandler {
@@ -114,32 +120,25 @@ fun MainScreenView(
                     modifier = Modifier.weight(0.85f),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    ExposedDropdownMenuBox(
-                        expanded = expanded,
-                        onExpandedChange = { expanded = !expanded }
-                    ) {
-                        TextField(
-                            value = category,
-                            onValueChange = {},
-                            readOnly = true,
-                            label = { Text("Kategoria") },
-                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
-                            modifier = Modifier.menuAnchor()
+                    if(currentView == "main") {
+                        OutlinedTextField(
+                            value = search,
+                            onValueChange = {
+                                toDoViewModel.setSearch(it)
+                            },
+                            label = { Text("Wyszukaj") },
+                            modifier = Modifier.fillMaxWidth(),
                         )
-                        ExposedDropdownMenu(
-                            expanded = expanded,
-                            onDismissRequest = { expanded = false }
-                        ) {
-                            categories.forEach { category ->
-                                DropdownMenuItem(
-                                    text = { Text(category) },
-                                    onClick = {
-                                        toDoViewModel.setCategory(category)
-                                        expanded = false
-                                    }
-                                )
-                            }
-                        }
+                    } else if (currentView == "add") {
+                        Text(
+                            text = "Dodaj wydarzenie",
+                            style = MaterialTheme.typography.titleLarge
+                        )
+                    } else if (currentView == "settings") {
+                        Text(
+                            text = "Ustawienia",
+                            style = MaterialTheme.typography.titleLarge
+                        )
                     }
                 }
 
@@ -147,7 +146,12 @@ fun MainScreenView(
                     modifier = Modifier.weight(0.15f),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    IconButton(onClick = { /* TODO: przejście do ustawień */ }) {
+                    IconButton(onClick = {
+                        if (currentView != "settings"){
+                            onViewChange("settings")
+                        }
+                    }
+                    ) {
                         Icon(Icons.Default.Settings, contentDescription = "Ustawienia")
                     }
                 }
@@ -155,11 +159,20 @@ fun MainScreenView(
 
             if (currentView == "main"){
                 ToDoList(modifier = Modifier.weight(0.85f), sampleReminders, onViewChange)
-            }
-            else if (currentView == "add"){
+            } else if (currentView == "add"){
                 AddReminder(modifier = Modifier.weight(0.85f), toDoViewModel, onAddClick, categories.subList(1, categories.size))
+            } else if (currentView == "settings") {
+                SettingsScreen(
+                    modifier = Modifier.weight(0.85f),
+                    categories = categories,
+                    selectedCategory = category,
+                    onCategorySelected = { toDoViewModel.setCategory(it) },
+                    notificationMinutes = notificationTime,
+                    onNotificationMinutesChange = { toDoViewModel.setNotificationTime(it) },
+                    hideCompleted = hideCompleted,
+                    onHideCompletedChange = { toDoViewModel.setHideFinished(it) }
+                    )
             }
-
         }
     }
 }
@@ -262,7 +275,7 @@ fun AddReminder(
     var date by remember { mutableStateOf("") }
     var time by remember { mutableStateOf("") }
     var notificationsEnabled by remember { mutableStateOf(false) }
-    var attachments by remember { mutableStateOf<List<Uri>>(emptyList()) }
+    var attachments by remember { mutableStateOf<MutableList<Uri>>(mutableListOf<Uri>()) }
     var category by remember { mutableStateOf("") }
     var expanded by remember { mutableStateOf(false) }
 
@@ -274,7 +287,7 @@ fun AddReminder(
     val multipleAttachmentLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetMultipleContents()
     ) { uris: List<Uri> ->
-        attachments = attachments + uris
+        attachments = (attachments + uris).toMutableList()
     }
 
     LazyColumn(
@@ -419,7 +432,21 @@ fun AddReminder(
             items(attachments.size) { index ->
                 val uri = attachments[index]
                 val fileName = remember(uri) { toDoViewModel.getFileNameFromUri(uri) ?: "Nieznany plik" }
-                Text(text = "${index + 1}. $fileName")
+                Log.d("tag", "tutaj")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(text = "${index + 1}. $fileName")
+                    IconButton(
+                        onClick = { attachments.removeAt(index) },
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "Zamknij"
+                        )
+                    }
+                }
             }
         }
 
@@ -570,4 +597,91 @@ fun DatePickerField(
         },
         isError = isError
     )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SettingsScreen(
+    modifier: Modifier = Modifier,
+    categories: List<String>,
+    selectedCategory: String,
+    onCategorySelected: (String) -> Unit,
+    notificationMinutes: Int,
+    onNotificationMinutesChange: (Int) -> Unit,
+    hideCompleted: Boolean,
+    onHideCompletedChange: (Boolean) -> Unit
+) {
+    var categoryDropdownExpanded by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(24.dp)
+    ) {
+
+        // Wybór kategorii
+        Text(text = "Wybierz kategorię", style = MaterialTheme.typography.titleMedium)
+        ExposedDropdownMenuBox(
+            expanded = categoryDropdownExpanded,
+            onExpandedChange = { categoryDropdownExpanded = !categoryDropdownExpanded }
+        ) {
+            TextField(
+                value = selectedCategory,
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Kategoria") },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(categoryDropdownExpanded) },
+                modifier = Modifier
+                    .menuAnchor()
+                    .fillMaxWidth()
+            )
+
+            ExposedDropdownMenu(
+                expanded = categoryDropdownExpanded,
+                onDismissRequest = { categoryDropdownExpanded = false }
+            ) {
+                categories.forEach { category ->
+                    DropdownMenuItem(
+                        text = { Text(category) },
+                        onClick = {
+                            onCategorySelected(category)
+                            categoryDropdownExpanded = false
+                        }
+                    )
+                }
+            }
+        }
+
+        var notificationError by remember { mutableStateOf(false) }
+
+        Text(text = "Czas przypomnienia (w minutach)", style = MaterialTheme.typography.titleMedium)
+        OutlinedTextField(
+            value = notificationMinutes.toString(),
+            onValueChange = {
+                if (it.all { char -> char.isDigit() }) {
+                    if (it.isNotBlank()){
+                        onNotificationMinutesChange(it.toInt())
+                    } else {
+                        onNotificationMinutesChange(0)
+                    }
+                }
+            },
+            label = { Text("Minuty") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Ukryj zakończone zadania", style = MaterialTheme.typography.titleMedium)
+            Switch(
+                checked = hideCompleted,
+                onCheckedChange = onHideCompletedChange
+            )
+        }
+    }
 }

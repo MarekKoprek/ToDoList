@@ -8,11 +8,11 @@ interface ReminderDao {
     @Insert
     suspend fun insert(reminder: Reminder): Long
 
-    @Query("SELECT * FROM reminder")
-    suspend fun getAllReminders(): List<Reminder>
+    @Query("SELECT * FROM reminder WHERE title LIKE '%' || :search || '%'")
+    suspend fun getAllReminders(search: String): List<Reminder>
 
-    @Query("SELECT * FROM reminder WHERE category = :category")
-    suspend fun getAllRemindersByCategory(category: String): List<Reminder>
+    @Query("SELECT * FROM reminder WHERE category = :category AND title LIKE '%' || :search || '%'")
+    suspend fun getAllRemindersByCategory(category: String, search: String): List<Reminder>
 
     @Delete
     suspend fun delete(reminder: Reminder)

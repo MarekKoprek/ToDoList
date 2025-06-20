@@ -3,6 +3,7 @@ package com.example.todolist.util
 import android.net.Uri
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import java.util.Date
 
 @Entity(tableName = "reminder")
 data class Reminder(

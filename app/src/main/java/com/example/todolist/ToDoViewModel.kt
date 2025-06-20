@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.io.File
+import java.util.Date
 
 class ToDoViewModel(application: Application) : AndroidViewModel(application) {
     private val _notificationTime = MutableStateFlow<Int>(0)
@@ -26,6 +27,12 @@ class ToDoViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _reminders = MutableStateFlow<List<Reminder>>(emptyList())
     val reminders: StateFlow<List<Reminder>> = _reminders.asStateFlow()
+
+    private val _hideFinished = MutableStateFlow<Boolean>(false)
+    val hideFinished: StateFlow<Boolean> = _hideFinished.asStateFlow()
+
+    private val _search = MutableStateFlow<String>("")
+    val search: StateFlow<String> = _search.asStateFlow()
 
     private val db: AppDatabase = Room.databaseBuilder(
         application.applicationContext,
@@ -62,7 +69,7 @@ class ToDoViewModel(application: Application) : AndroidViewModel(application) {
                 finished = finished,
                 files = files,
                 attachments = emptyList(),
-                notificationSent = false
+                notificationSent = false,
             ))
             val context: Context = getApplication()
             val newUris: MutableList<Uri> = emptyList<Uri>().toMutableList()
@@ -71,22 +78,40 @@ class ToDoViewModel(application: Application) : AndroidViewModel(application) {
                 newUris += context.copyUriToAppStorage(attachment, newFileName)
             }
             reminderDao.updateAttachments(newId.toInt(), newUris)
-            _reminders.value = reminderDao.getAllReminders()
+            getReminders()
         }
     }
 
     fun getReminders(){
         viewModelScope.launch {
+            val list: List<Reminder>
             if (_category.value == "Wszystkie") {
-                _reminders.value = reminderDao.getAllReminders()
+                list = reminderDao.getAllReminders(_search.value)
             } else {
-                _reminders.value = reminderDao.getAllRemindersByCategory(_category.value)
+                list = reminderDao.getAllRemindersByCategory(_category.value, _search.value)
+            }
+            if (_hideFinished.value) {
+                _reminders.value = list.filter { !it.finished }
+            } else {
+                _reminders.value = list
             }
         }
     }
 
     fun setCategory(category: String){
         _category.value = category
+    }
+
+    fun setNotificationTime(time: Int) {
+        _notificationTime.value = time
+    }
+
+    fun setHideFinished(value: Boolean) {
+        _hideFinished.value = value
+    }
+
+    fun setSearch(search: String) {
+        _search.value = search
     }
 
     private fun Context.copyUriToAppStorage(uri: Uri, targetFileName: String): Uri {
