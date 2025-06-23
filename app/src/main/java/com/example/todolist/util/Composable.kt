@@ -246,6 +246,20 @@ fun ToDoList(
                     .padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                if (reminders.isEmpty()) {
+                    item {
+                        Row (
+                            modifier = Modifier.fillMaxWidth()
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.Center
+                        ){
+                            Text(
+                                text = "Brak wydarzeń",
+                                style = MaterialTheme.typography.titleLarge
+                            )
+                        }
+                    }
+                }
                 items(reminders) {
                     ReminderCard(it, onCardClick = onCardClick)
                 }

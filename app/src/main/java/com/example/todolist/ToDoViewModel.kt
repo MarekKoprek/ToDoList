@@ -29,6 +29,7 @@ import java.io.File
 import java.time.LocalDateTime
 import java.util.Calendar
 import java.util.Date
+import androidx.core.content.edit
 
 class ToDoViewModel(application: Application) : AndroidViewModel(application) {
     private val _notificationTime = MutableStateFlow<Int>(0)
@@ -54,6 +55,10 @@ class ToDoViewModel(application: Application) : AndroidViewModel(application) {
 
     private val reminderDao = db.reminderDao()
 
+    init {
+        loadNotificationTime()
+    }
+
     @SuppressLint("ScheduleExactAlarm")
     fun addReminder(id: Int = 0,
                     day: Int,
@@ -69,7 +74,8 @@ class ToDoViewModel(application: Application) : AndroidViewModel(application) {
                     files: Boolean,
                     attachments: List<Uri>){
         viewModelScope.launch {
-            val newId = reminderDao.insert(Reminder(id = id,
+            val newId = reminderDao.insert(Reminder(
+                id = id,
                 day = day,
                 month = month,
                 year = year,
@@ -120,7 +126,8 @@ class ToDoViewModel(application: Application) : AndroidViewModel(application) {
             reminder?.attachments?.forEach {
                 deleteFileFromUri(it)
             }
-            reminderDao.update(Reminder(id = id,
+            reminderDao.update(Reminder(
+                id = id,
                 day = day,
                 month = month,
                 year = year,
@@ -193,10 +200,22 @@ class ToDoViewModel(application: Application) : AndroidViewModel(application) {
     @SuppressLint("ScheduleExactAlarm")
     fun setNotificationTime(time: Int) {
         _notificationTime.value = time
+
+        val context = getApplication<Application>().applicationContext
+        val prefs = context.getSharedPreferences("reminder_prefs", Context.MODE_PRIVATE)
+        prefs.edit { putInt("notification_time", time) }
+
         _reminders.value.forEach {
             unscheduleReminder(it)
             scheduleReminder(it)
         }
+    }
+
+    fun loadNotificationTime() {
+        val context = getApplication<Application>().applicationContext
+        val prefs = context.getSharedPreferences("reminder_prefs", Context.MODE_PRIVATE)
+        val savedTime = prefs.getInt("notification_time", 0)
+        _notificationTime.value = savedTime
     }
 
     fun setHideFinished(value: Boolean) {
@@ -272,6 +291,9 @@ class ToDoViewModel(application: Application) : AndroidViewModel(application) {
         )
 
         var date = LocalDateTime.of(reminder.year, reminder.month, reminder.day, reminder.hour, reminder.minute)
+        if (date.isBefore(LocalDateTime.now())) {
+            return
+        }
         date = date.minusMinutes(_notificationTime.value.toLong())
         val calendar = Calendar.getInstance().apply {
             set(Calendar.YEAR, date.year)
@@ -289,10 +311,6 @@ class ToDoViewModel(application: Application) : AndroidViewModel(application) {
             calendar.timeInMillis,
             pendingIntent
         )
-
-        viewModelScope.launch {
-            reminderDao.updateNotificationSent(reminder.id)
-        }
     }
 
     private fun unscheduleReminder(
