@@ -1,10 +1,16 @@
 package com.example.todolist
 
+import android.Manifest
+import android.annotation.SuppressLint
+import android.app.AlarmManager
 import android.app.Application
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.util.Log
+import androidx.annotation.RequiresPermission
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.room.Database
@@ -17,6 +23,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.io.File
+import java.time.LocalDateTime
+import java.util.Calendar
 import java.util.Date
 
 class ToDoViewModel(application: Application) : AndroidViewModel(application) {
@@ -43,6 +51,7 @@ class ToDoViewModel(application: Application) : AndroidViewModel(application) {
 
     private val reminderDao = db.reminderDao()
 
+    @SuppressLint("ScheduleExactAlarm")
     fun addReminder(id: Int = 0,
                     day: Int,
                     month: Int,
@@ -79,23 +88,28 @@ class ToDoViewModel(application: Application) : AndroidViewModel(application) {
                 newUris += context.copyUriToAppStorage(attachment, newFileName)
             }
             reminderDao.updateAttachments(newId.toInt(), newUris)
+            val newReminder = reminderDao.getReminderById(newId.toInt())
+            if(newReminder != null) {
+                scheduleReminder(newReminder)
+            }
             getReminders()
         }
     }
 
+    @SuppressLint("ScheduleExactAlarm")
     fun editReminder(id: Int,
-                    day: Int,
-                    month: Int,
-                    year: Int,
-                    hour: Int,
-                    minute: Int,
-                    title: String,
-                    description: String,
-                    category: String,
-                    notification: Boolean,
-                    finished: Boolean,
-                    files: Boolean,
-                    attachments: List<Uri>) {
+                     day: Int,
+                     month: Int,
+                     year: Int,
+                     hour: Int,
+                     minute: Int,
+                     title: String,
+                     description: String,
+                     category: String,
+                     notification: Boolean,
+                     finished: Boolean,
+                     files: Boolean,
+                     attachments: List<Uri>) {
         viewModelScope.launch {
             val reminder = reminderDao.getReminderById(id)
             reminder?.attachments?.forEach {
@@ -125,6 +139,11 @@ class ToDoViewModel(application: Application) : AndroidViewModel(application) {
             if (attachments.isNotEmpty()) {
                 reminderDao.updateAttachments(id, newUris)
             }
+            val newReminder = reminderDao.getReminderById(id)
+            if(newReminder != null) {
+                unscheduleReminder(newReminder)
+                scheduleReminder(newReminder)
+            }
             getReminders()
         }
     }
@@ -136,6 +155,7 @@ class ToDoViewModel(application: Application) : AndroidViewModel(application) {
                 deleteFileFromUri(it)
             }
             if (reminder != null) {
+                unscheduleReminder(reminder)
                 reminderDao.delete(reminder)
             }
         }
@@ -162,8 +182,13 @@ class ToDoViewModel(application: Application) : AndroidViewModel(application) {
         _category.value = category
     }
 
+    @SuppressLint("ScheduleExactAlarm")
     fun setNotificationTime(time: Int) {
         _notificationTime.value = time
+        _reminders.value.forEach {
+            unscheduleReminder(it)
+            scheduleReminder(it)
+        }
     }
 
     fun setHideFinished(value: Boolean) {
@@ -206,5 +231,63 @@ class ToDoViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
         return name
+    }
+
+    @SuppressLint("ScheduleExactAlarm")
+    @RequiresPermission(Manifest.permission.SCHEDULE_EXACT_ALARM)
+    private fun scheduleReminder(
+        reminder: Reminder,
+    ) {
+        val context: Context = getApplication()
+        val intent = Intent(context, ReminderReceiver::class.java).apply {
+            putExtra("title", reminder.title)
+            putExtra("description", reminder.description)
+            putExtra("reminderId", reminder.id)
+        }
+
+        val pendingIntent = PendingIntent.getBroadcast(
+            context, reminder.id, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        var date = LocalDateTime.of(reminder.year, reminder.month, reminder.day, reminder.hour, reminder.minute)
+        date = date.minusMinutes(_notificationTime.value.toLong())
+        val calendar = Calendar.getInstance().apply {
+            set(Calendar.YEAR, date.year)
+            set(Calendar.MONTH, date.monthValue - 1)
+            set(Calendar.DAY_OF_MONTH, date.dayOfMonth)
+            set(Calendar.HOUR_OF_DAY, date.hour)
+            set(Calendar.MINUTE, date.minute)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        alarmManager.setExactAndAllowWhileIdle(
+            AlarmManager.RTC_WAKEUP,
+            calendar.timeInMillis,
+            pendingIntent
+        )
+    }
+
+    private fun unscheduleReminder(
+        reminder: Reminder
+    ) {
+        val context: Context = getApplication()
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+
+        val intent = Intent(context, ReminderReceiver::class.java).apply {
+            putExtra("title", reminder.title)
+            putExtra("description", reminder.description)
+            putExtra("reminderId", reminder.id)
+        }
+
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            reminder.id,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        alarmManager.cancel(pendingIntent)
     }
 }

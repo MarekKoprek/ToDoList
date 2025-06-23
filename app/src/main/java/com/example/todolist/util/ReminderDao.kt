@@ -11,13 +11,13 @@ interface ReminderDao {
     @Update
     suspend fun update(reminder: Reminder)
 
-    @Query("SELECT * FROM reminder WHERE id = :id")
+    @Query("SELECT * FROM reminder WHERE id = :id ORDER BY month, day, hour, minute")
     suspend fun getReminderById(id: Int): Reminder?
 
-    @Query("SELECT * FROM reminder WHERE title LIKE '%' || :search || '%'")
+    @Query("SELECT * FROM reminder WHERE title LIKE '%' || :search || '%' ORDER BY month, day, hour, minute")
     suspend fun getAllReminders(search: String): List<Reminder>
 
-    @Query("SELECT * FROM reminder WHERE category = :category AND title LIKE '%' || :search || '%'")
+    @Query("SELECT * FROM reminder WHERE category = :category AND title LIKE '%' || :search || '%' ORDER BY month, day, hour, minute")
     suspend fun getAllRemindersByCategory(category: String, search: String): List<Reminder>
 
     @Delete
