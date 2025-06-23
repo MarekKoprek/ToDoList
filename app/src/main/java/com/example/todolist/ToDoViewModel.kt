@@ -5,12 +5,15 @@ import android.annotation.SuppressLint
 import android.app.AlarmManager
 import android.app.Application
 import android.app.PendingIntent
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.util.Log
+import android.widget.Toast
 import androidx.annotation.RequiresPermission
+import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.room.Database
@@ -87,7 +90,9 @@ class ToDoViewModel(application: Application) : AndroidViewModel(application) {
                 val newFileName = "${newId}_${getFileNameFromUri(attachment)}"
                 newUris += context.copyUriToAppStorage(attachment, newFileName)
             }
-            reminderDao.updateAttachments(newId.toInt(), newUris)
+            if (attachments.isNotEmpty()) {
+                reminderDao.updateAttachments(newId.toInt(), newUris)
+            }
             val newReminder = reminderDao.getReminderById(newId.toInt())
             if(newReminder != null) {
                 scheduleReminder(newReminder)
@@ -134,7 +139,10 @@ class ToDoViewModel(application: Application) : AndroidViewModel(application) {
             val newUris: MutableList<Uri> = emptyList<Uri>().toMutableList()
             for (attachment in attachments) {
                 val newFileName = "${id}_${getFileNameFromUri(attachment)}"
-                newUris += context.copyUriToAppStorage(attachment, newFileName)
+                val newUri = context.copyUriToAppStorage(attachment, newFileName)
+                val newName = getFileNameFromUri(newUri)
+                Log.d("NewUri", "$newUri - $newName")
+                newUris += newUri
             }
             if (attachments.isNotEmpty()) {
                 reminderDao.updateAttachments(id, newUris)
@@ -206,7 +214,8 @@ class ToDoViewModel(application: Application) : AndroidViewModel(application) {
                 input.copyTo(output)
             }
         }
-        return Uri.fromFile(targetFile)
+        Log.d("FileSaved", "Plik zapisano: $targetFile")
+        return FileProvider.getUriForFile(this, "${packageName}.fileprovider", targetFile)
     }
 
     private fun deleteFileFromUri(uri: Uri) {
@@ -238,7 +247,20 @@ class ToDoViewModel(application: Application) : AndroidViewModel(application) {
     private fun scheduleReminder(
         reminder: Reminder,
     ) {
+        if (!reminder.notification || reminder.notificationSent || reminder.finished) {
+            return
+        }
         val context: Context = getApplication()
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+
+        if (!alarmManager.canScheduleExactAlarms()) {
+            val intent = Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(intent)
+            return
+        }
+
         val intent = Intent(context, ReminderReceiver::class.java).apply {
             putExtra("title", reminder.title)
             putExtra("description", reminder.description)
@@ -260,13 +282,17 @@ class ToDoViewModel(application: Application) : AndroidViewModel(application) {
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
         }
+        Log.d("schedule", date.toString())
 
-        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         alarmManager.setExactAndAllowWhileIdle(
             AlarmManager.RTC_WAKEUP,
             calendar.timeInMillis,
             pendingIntent
         )
+
+        viewModelScope.launch {
+            reminderDao.updateNotificationSent(reminder.id)
+        }
     }
 
     private fun unscheduleReminder(
@@ -280,6 +306,7 @@ class ToDoViewModel(application: Application) : AndroidViewModel(application) {
             putExtra("description", reminder.description)
             putExtra("reminderId", reminder.id)
         }
+        Log.d("unschedule", reminder.title)
 
         val pendingIntent = PendingIntent.getBroadcast(
             context,
@@ -289,5 +316,19 @@ class ToDoViewModel(application: Application) : AndroidViewModel(application) {
         )
 
         alarmManager.cancel(pendingIntent)
+    }
+
+    fun openFileFromUri(fileUri: Uri) {
+        val context: Context = getApplication()
+        val openFileIntent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(fileUri, context.contentResolver.getType(fileUri) ?: "*/*")
+            flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+
+        try {
+            context.startActivity(openFileIntent)
+        } catch (e: ActivityNotFoundException) {
+            Toast.makeText(context, "Brak aplikacji do otwarcia tego pliku", Toast.LENGTH_SHORT).show()
+        }
     }
 }

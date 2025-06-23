@@ -25,4 +25,7 @@ interface ReminderDao {
 
     @Query("UPDATE reminder SET attachments = :newAttachments, files = true WHERE id = :entityId")
     suspend fun updateAttachments(entityId: Int, newAttachments: List<Uri>)
+
+    @Query("UPDATE reminder SET notificationSent = true WHERE id = :entityId")
+    suspend fun updateNotificationSent(entityId: Int)
 }

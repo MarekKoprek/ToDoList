@@ -70,7 +70,9 @@ import java.util.Calendar
 fun MainScreenView(
     modifier: Modifier = Modifier,
     windowSizeClass: WindowSizeClass,
-    toDoViewModel: ToDoViewModel = viewModel()
+    toDoViewModel: ToDoViewModel = viewModel(),
+    reminderId: Int?,
+    onHandled: () -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
     var currentView by remember { mutableStateOf("main") }
@@ -108,6 +110,10 @@ fun MainScreenView(
         editId = it
     }
 
+    val onAttachmentClick: (Uri) -> Unit = {
+        toDoViewModel.openFileFromUri(it)
+    }
+
     val reminders by toDoViewModel.reminders.collectAsState()
     val category by toDoViewModel.category.collectAsState()
     val notificationTime by toDoViewModel.notificationTime.collectAsState()
@@ -124,6 +130,13 @@ fun MainScreenView(
     }
 
     toDoViewModel.getReminders()
+
+    LaunchedEffect(reminderId, reminders) {
+        if (reminderId != null && reminderId != -1 && reminders.isNotEmpty()) {
+            onReminderClick(reminderId)
+            onHandled()
+        }
+    }
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -198,8 +211,14 @@ fun MainScreenView(
                     onHideCompletedChange = { toDoViewModel.setHideFinished(it) }
                     )
             } else if (currentView == "edit") {
+                Log.d("EditId", editId.toString())
+                for (reminder in reminders) {
+                    val id = reminder.id
+                    val title = reminder.title
+                    Log.d("Reminder", "$id - $title")
+                }
                 val reminder = reminders.first { it.id == editId }
-                EditReminder(modifier = Modifier.weight(0.85f), toDoViewModel, onEditClick, categories.subList(1, categories.size), reminder, onDeleteClick)
+                EditReminder(modifier = Modifier.weight(0.85f), toDoViewModel, onEditClick, categories.subList(1, categories.size), reminder, onDeleteClick, onAttachmentClick)
             }
         }
     }
@@ -470,7 +489,7 @@ fun AddReminder(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    val displayFileName = fileName.substring(0, 29) + (if (fileName.length > 29) "..." else "")
+                    val displayFileName = if (fileName.length > 29)  fileName.substring(0, 28) + "..." else fileName
                     Text(
                         text = "${index + 1}. $displayFileName",
                     )
@@ -551,7 +570,8 @@ fun EditReminder(
     onAddClick: (Int, Int, Int, Int, Int, Int, String, String, String, Boolean, Boolean, Boolean, List<Uri>) -> Unit,
     categories: List<String>,
     reminder: Reminder,
-    onDeleteClick: suspend (Int) -> Unit
+    onDeleteClick: suspend (Int) -> Unit,
+    onAttachmentClick: (Uri) -> Unit
 ) {
     val month10 = if (reminder.month < 10) "0" else ""
     val day10 = if (reminder.day < 10) "0" else ""
@@ -742,6 +762,9 @@ fun EditReminder(
                     val displayFileName = if (fileName.length > 29) fileName.substring(0, 29) + "..." else fileName
                     Text(
                         text = "${index + 1}. $displayFileName",
+                        modifier = Modifier.clickable {
+                            onAttachmentClick(uri)
+                        }
                     )
                     IconButton(
                         onClick = {

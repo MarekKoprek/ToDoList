@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -17,6 +18,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
 import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.core.app.ActivityCompat
@@ -31,9 +37,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        val reminderIdFromIntent = intent?.getIntExtra("reminderId", -1)
         setContent {
             val windowSizeClass = calculateWindowSizeClass(activity = this)
-            createNotificationChannel(application)
+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
                 ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
             ) {
@@ -43,15 +50,33 @@ class MainActivity : ComponentActivity() {
                     REQUEST_NOTIFICATION_PERMISSION
                 )
             }
+
+            createNotificationChannel(application)
+
+            var reminderId by rememberSaveable { mutableStateOf(reminderIdFromIntent) }
+
+            LaunchedEffect(Unit) {
+                intent?.getIntExtra("reminderId", -1)?.let {
+                    reminderId = if (it != -1) it else null
+                }
+            }
+
             ToDoListTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     MainScreenView(
                         modifier = Modifier.padding(innerPadding),
                         windowSizeClass = windowSizeClass,
+                        reminderId = reminderId,
+                        onHandled = { reminderId = null }
                     )
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
     }
 
     private fun createNotificationChannel(context: Context) {
