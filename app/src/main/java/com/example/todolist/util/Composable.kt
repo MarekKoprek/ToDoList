@@ -975,76 +975,85 @@ fun SettingsScreen(
     onHideCompletedChange: (Boolean) -> Unit
 ) {
     var categoryDropdownExpanded by remember { mutableStateOf(false) }
+    var notificationError by remember { mutableStateOf(false) }
 
-    Column(
+    LazyColumn(
         modifier = modifier
             .fillMaxSize()
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(24.dp)
     ) {
+        item {
+            Text(text = "Wybierz kategorię", style = MaterialTheme.typography.titleMedium)
+        }
 
-        // Wybór kategorii
-        Text(text = "Wybierz kategorię", style = MaterialTheme.typography.titleMedium)
-        ExposedDropdownMenuBox(
-            expanded = categoryDropdownExpanded,
-            onExpandedChange = { categoryDropdownExpanded = !categoryDropdownExpanded }
-        ) {
-            TextField(
-                value = selectedCategory,
-                onValueChange = {},
-                readOnly = true,
-                label = { Text("Kategoria") },
-                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(categoryDropdownExpanded) },
-                modifier = Modifier
-                    .menuAnchor()
-                    .fillMaxWidth()
-            )
-
-            ExposedDropdownMenu(
+        item {
+            ExposedDropdownMenuBox(
                 expanded = categoryDropdownExpanded,
-                onDismissRequest = { categoryDropdownExpanded = false }
+                onExpandedChange = { categoryDropdownExpanded = !categoryDropdownExpanded }
             ) {
-                categories.forEach { category ->
-                    DropdownMenuItem(
-                        text = { Text(category) },
-                        onClick = {
-                            onCategorySelected(category)
-                            categoryDropdownExpanded = false
-                        }
-                    )
+                TextField(
+                    value = selectedCategory,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Kategoria") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(categoryDropdownExpanded) },
+                    modifier = Modifier
+                        .menuAnchor()
+                        .fillMaxWidth()
+                )
+
+                ExposedDropdownMenu(
+                    expanded = categoryDropdownExpanded,
+                    onDismissRequest = { categoryDropdownExpanded = false }
+                ) {
+                    categories.forEach { category ->
+                        DropdownMenuItem(
+                            text = { Text(category) },
+                            onClick = {
+                                onCategorySelected(category)
+                                categoryDropdownExpanded = false
+                            }
+                        )
+                    }
                 }
             }
         }
 
-        var notificationError by remember { mutableStateOf(false) }
+        item {
+            Text(text = "Czas przypomnienia (w minutach)", style = MaterialTheme.typography.titleMedium)
+        }
 
-        Text(text = "Czas przypomnienia (w minutach)", style = MaterialTheme.typography.titleMedium)
-        OutlinedTextField(
-            value = notificationMinutes.toString(),
-            onValueChange = {
-                if (it.all { char -> char.isDigit() }) {
-                    if (it.isNotBlank()){
-                        onNotificationMinutesChange(it.toInt())
-                    } else {
-                        onNotificationMinutesChange(0)
+        item {
+            OutlinedTextField(
+                value = notificationMinutes.toString(),
+                onValueChange = {
+                    if (it.all { char -> char.isDigit() }) {
+                        if (it.isNotBlank()) {
+                            onNotificationMinutesChange(it.toInt())
+                        } else {
+                            onNotificationMinutesChange(0)
+                        }
                     }
-                }
-            },
-            label = { Text("Minuty") },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            modifier = Modifier.fillMaxWidth(),
-        )
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("Ukryj zakończone zadania", style = MaterialTheme.typography.titleMedium)
-            Switch(
-                checked = hideCompleted,
-                onCheckedChange = onHideCompletedChange
+                },
+                label = { Text("Minuty") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.fillMaxWidth()
             )
+        }
+
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Ukryj zakończone zadania", style = MaterialTheme.typography.titleMedium)
+                Switch(
+                    checked = hideCompleted,
+                    onCheckedChange = onHideCompletedChange
+                )
+            }
         }
     }
 }
